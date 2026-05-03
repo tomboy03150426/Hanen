@@ -1,0 +1,22 @@
+{
+  "name": "hanen-clinic-portal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Han En clinic LAN treatment record portal with SQLite persistence.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "check": "node --check server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.9.1",
+    "compression": "^1.7.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0"
+  }
+}

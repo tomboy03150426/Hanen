@@ -1,77 +1,101 @@
-# 涵恩婦產科診所｜自費療程紀錄系統
+# Han En Clinic Treatment Record Portal
 
-這個版本已從展示用 prototype 往正式上線前端規格靠攏，重點不再只是畫面，而是把實際系統會需要的前端約束先立起來。
+涵恩婦產科診所自費療程紀錄系統。此版本包含：
 
-## 目前已補上的上線向能力
+- 診所內網前端頁面
+- 醫護登入
+- 病患身份驗證後填寫自己的療程資料與簽名
+- 醫護後台查詢、編輯、PDF 匯出
+- SQLite 後端儲存
+- 稽核紀錄
 
-1. 患者端與醫護端權限分流
-   - 患者只能透過已簽發的 QR token 進入自己的資料
-   - 醫護端必須以帳密登入後才能查詢與編輯
-2. 表單權限拆分
-   - 患者端只填左側欄位：日期、付款狀態、困擾量表、治療後反饋、簽名
-   - 醫護端只編輯右側欄位：模式、強度、施作部位 / 時間、護理師
-3. 多療程表單架構
-   - 患者登入後只顯示需要填寫的表單區塊
-   - 目前前端已支援 `磁波椅` 與 `陰道雷射` 兩種療程項目切換
-   - 後續新增療程時可沿用同一套 treatment catalog 結構
-4. 本機持久化
-   - 使用 `localStorage` 暫存患者資料、醫護登入狀態與最近編輯結果
-5. 正式流程驗證
-   - token 格式檢查
-   - 未簽發 token 不允許登入
-   - 患者送出時會驗證姓名、生日、病歷號、困擾量表、反饋與簽名
-   - 已簽名資料如果再被患者修改，簽名會自動失效並要求重簽
-6. 基礎稽核軌跡
-   - 本機會留下登入、送出、簽名、醫護修改的 audit trail
+## VM 部署
 
-## 檔案
+```bash
+cd /var/www
+git clone https://github.com/tomboy03150426/Hanen.git hanen
+cd hanen
+npm install
+npm start
+```
 
-- `index.html`: 主介面與頁面結構
-- `styles.css`: 品牌樣式、表格與互動狀態
-- `app.js`: 前端狀態管理、登入權限、驗證、簽名、資料持久化
-- `database-schema.sql`: 對應正式落地的資料庫結構
+預設服務位置：
 
-## 示範帳號
+```text
+http://VM_IP:4173
+```
 
-- 患者 token：`HE-2026-0428-LIN`
-- 醫師：`doctor.hsu / demo1234`
-- 護理師：`nurse.chen / demo1234`
+如果已經 clone 過：
 
-## 正式上線前仍建議補上
+```bash
+cd /var/www/hanen
+git pull
+npm install
+npm start
+```
 
-1. 後端 API 與真正的認證
-   - 患者 QR token 應由後端短時效簽發
-   - 醫護登入應改用真正帳號系統、JWT / session cookie
-2. 真實 QR code 產生與驗證
-   - 目前畫面仍是前端示範入口
-   - 正式版應由後端產生可掃描 payload
-3. 個資與簽名檔安全
-   - 簽名圖片應存物件儲存或加密檔案系統
-   - 病歷號、聯絡方式、日志應依院所規範加密與控管
-4. 更完整的權限矩陣
-   - 醫師 / 護理師可再細分查閱、編輯、結案、列印權限
-5. 稽核與法遵
-   - 後端 audit log
-   - 欄位異動歷程
-   - IP / user agent / 操作來源紀錄
+## 正式執行建議
 
-## 建議 API 切點
+建議使用 process manager，例如 pm2：
 
-### 患者端
+```bash
+npm install -g pm2
+cd /var/www/hanen
+pm2 start server.js --name hanen
+pm2 save
+```
 
-- `POST /api/patient-access/verify-token`
-- `GET /api/patient-access/forms/:token`
-- `PUT /api/patient-access/forms/:token`
-- `POST /api/patient-access/forms/:token/signature`
+## 環境變數
 
-### 醫護端
+可建立 `.env`：
 
-- `POST /api/staff-auth/login`
-- `POST /api/staff-auth/logout`
-- `GET /api/treatment-records`
-- `GET /api/treatment-records/:id`
-- `PUT /api/treatment-records/:id/sessions/:sessionNo`
+```env
+PORT=4173
+DATA_DIR=/var/www/hanen/data
+DB_PATH=/var/www/hanen/data/hanen.sqlite
+SESSION_TTL_MS=43200000
+```
 
-## 備註
+## 預設測試帳號
 
-目前這份仍是純前端版本，但資料流、權限邏輯與欄位責任已經開始按正式系統思維整理，後續接 Laravel、Node/Express、NestJS 或 Supabase 都可以順著這個結構往下接。
+```text
+doctor.hsu / demo1234
+nurse.chen / demo1234
+```
+
+第一次啟動會自動建立 SQLite 資料庫與測試帳號。
+
+## 資料備份
+
+正式資料庫預設在：
+
+```text
+data/hanen.sqlite
+```
+
+`data/` 不會進 Git，請在 VM 上定期備份：
+
+```bash
+cp data/hanen.sqlite data/hanen.sqlite.$(date +%F).bak
+```
+
+## 使用流程
+
+1. 醫護或櫃台先登入醫護後台。
+2. 到「櫃台開單」建立病患當次療程紀錄。
+3. 病患在平板輸入姓名、身分證字號、生日後填寫表單。
+4. 病患完成簽名與送出後，醫護後台會看到需要補填的施作細節。
+5. 醫護可在個別病患頁面匯出 PDF。
+
+## GitHub 更新到 VM
+
+本機修改完成並推上 GitHub 後，VM 只要：
+
+```bash
+cd /var/www/hanen
+git pull
+npm install
+pm2 restart hanen
+```
+
+若沒有使用 pm2，則停止原本的 `npm start` 後重新執行。

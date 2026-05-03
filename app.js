@@ -4,6 +4,7 @@ const APP_CONFIG = {
   storageKeys: {
     records: "hanen.records.v2",
     staffSession: "hanen.staff-session.v2",
+    staffToken: "hanen.staff-token.v1",
     auditTrail: "hanen.audit-trail.v2",
     lanBaseUrl: "hanen.lan-base-url.v1"
   },
@@ -113,8 +114,10 @@ const DEFAULT_RECORDS = [
 const state = {
   records: [],
   staffSession: null,
+  staffToken: null,
   currentPatientToken: null,
   currentPatientVerified: false,
+  patientIdentity: null,
   selectedReceptionToken: null,
   selectedStaffToken: null,
   staffDetailTab: "clinical",
@@ -190,18 +193,21 @@ const elements = {
 };
 
 const signaturePad = createSignaturePad(elements.signatureCanvas);
+let apiPersistTimer = null;
 
 init();
 
-function init() {
-  state.records = ensureDemoDataset(loadRecords());
+async function init() {
   state.staffSession = loadStorage(APP_CONFIG.storageKeys.staffSession);
+  state.staffToken = loadStorage(APP_CONFIG.storageKeys.staffToken);
   if (!findStaffByUsername(state.staffSession?.username)) {
     state.staffSession = null;
+    state.staffToken = null;
   }
+  state.records = ensureDemoDataset(await loadRecords());
 
   const routedToken = getRouteRecordToken();
-  if (routedToken && findRecordByToken(routedToken)) {
+  if (routedToken) {
     state.currentPatientToken = routedToken;
     state.selectedReceptionToken = routedToken;
     state.selectedStaffToken = routedToken;
@@ -261,9 +267,10 @@ function routeFromLocation() {
   const screen = params.get("view");
   const recordToken = params.get("record");
 
-  if (recordToken && findRecordByToken(recordToken)) {
+  if (recordToken) {
     state.currentPatientToken = recordToken;
     state.selectedReceptionToken = recordToken;
+    state.selectedStaffToken = recordToken;
     state.currentPatientVerified = false;
   }
 
@@ -331,6 +338,12 @@ function renderAll() {
 function handleReceptionCreate(event) {
   event.preventDefault();
 
+  if (isApiMode() && !state.staffToken) {
+    setInfo(elements.receptionStatus, "正式模式需先登入醫護後台，才可建立新的療程紀錄。", true);
+    openScreen("staff");
+    return;
+  }
+
   const record = normalizeRecord({
     token: generateRecordToken(elements.receptionChart.value.trim()),
     name: elements.receptionName.value.trim(),
@@ -356,6 +369,9 @@ function handleReceptionCreate(event) {
   state.currentPatientVerified = false;
 
   persistRecords();
+  if (isApiMode() && state.staffToken) {
+    apiSaveRecords([record]).catch((error) => console.warn("Unable to create record through API.", error));
+  }
   writeAuditLog("reception_create", { token: record.token, treatmentType: record.treatmentType });
   renderAll();
   openScreen("patient", { token: record.token });
@@ -388,7 +404,7 @@ function handleLanBaseUrlChange() {
   setInfo(elements.receptionStatus, `LAN 測試網址已更新為 ${normalized}`);
 }
 
-function handlePatientVerify() {
+async function handlePatientVerify() {
   const name = elements.patientLoginName.value.trim();
   const idNo = normalizeIdNo(elements.patientLoginIdNo.value);
   const birthday = elements.patientLoginBirthday.value;
@@ -406,12 +422,19 @@ function handlePatientVerify() {
     return;
   }
 
-  const routedRecord = getCurrentPatientRecord();
-  const matchedRecord = routedRecord
-    ? isPatientIdentityMatch(routedRecord, name, idNo, birthday)
-      ? routedRecord
-      : null
-    : findRecordByIdentity(name, idNo, birthday);
+  let matchedRecord = null;
+  try {
+    matchedRecord = await apiPatientVerify({ name, idNo, birthday, token: state.currentPatientToken });
+  } catch (error) {
+    if (!isApiMode()) {
+      const routedRecord = getCurrentPatientRecord();
+      matchedRecord = routedRecord
+        ? isPatientIdentityMatch(routedRecord, name, idNo, birthday)
+          ? routedRecord
+          : null
+        : findRecordByIdentity(name, idNo, birthday);
+    }
+  }
 
   if (!matchedRecord) {
     applyValidationErrors([elements.patientLoginName, elements.patientLoginIdNo, elements.patientLoginBirthday]);
@@ -421,6 +444,8 @@ function handlePatientVerify() {
 
   state.currentPatientToken = matchedRecord.token;
   state.currentPatientVerified = true;
+  state.patientIdentity = { name, idNo, birthday };
+  upsertStateRecord(matchedRecord);
   clearPatientLoginFields();
   renderPatientForm();
   setInfo(elements.patientLoginStatus, `已確認 ${matchedRecord.name} 的資料，請繼續填寫表單。`);
@@ -880,13 +905,29 @@ function applySignature() {
   setInfo(elements.patientLoginStatus, `第 ${session.index} 次簽名已儲存。`);
 }
 
-function handleStaffLogin() {
-  const account = MOCK_STAFF_ACCOUNTS.find(
-    (item) =>
-      item.username === elements.staffUsername.value.trim() &&
-      item.password === elements.staffPassword.value.trim() &&
-      item.role === elements.staffRole.value
-  );
+async function handleStaffLogin() {
+  let account = null;
+  let token = "";
+  try {
+    const login = await apiStaffLogin({
+      username: elements.staffUsername.value.trim(),
+      password: elements.staffPassword.value.trim(),
+      role: elements.staffRole.value
+    });
+    account = login.staff;
+    token = login.token;
+  } catch (error) {
+    if (isApiMode()) {
+      account = null;
+    } else {
+    account = MOCK_STAFF_ACCOUNTS.find(
+      (item) =>
+        item.username === elements.staffUsername.value.trim() &&
+        item.password === elements.staffPassword.value.trim() &&
+        item.role === elements.staffRole.value
+    );
+    }
+  }
 
   if (!account) {
     setInfo(elements.staffLoginStatus, "登入失敗，請確認帳號、密碼與角色。", true);
@@ -898,11 +939,17 @@ function handleStaffLogin() {
     role: account.role,
     fullName: account.fullName
   };
+  state.staffToken = token || state.staffToken || "";
+  if (state.staffToken) {
+    state.records = ensureDemoDataset(await loadRecords());
+    persistRecords();
+  }
   const priorityRecord = findPriorityStaffRecord();
   if (priorityRecord) {
     state.selectedStaffToken = priorityRecord.token;
   }
   saveStorage(APP_CONFIG.storageKeys.staffSession, state.staffSession);
+  saveStorage(APP_CONFIG.storageKeys.staffToken, state.staffToken);
   writeAuditLog("staff_login", { username: account.username, role: account.role });
   renderStaffDashboard();
   openScreen("staff");
@@ -917,8 +964,11 @@ function loadDemoStaff() {
 }
 
 function handleStaffLogout() {
+  apiStaffLogout();
   state.staffSession = null;
+  state.staffToken = null;
   saveStorage(APP_CONFIG.storageKeys.staffSession, null);
+  saveStorage(APP_CONFIG.storageKeys.staffToken, null);
   renderStaffDashboard();
   setInfo(elements.staffLoginStatus, "已登出醫護後台。");
 }
@@ -1665,7 +1715,19 @@ function normalizeSession(session, index, record) {
   };
 }
 
-function loadRecords() {
+async function loadRecords() {
+  if (isApiMode() && state.staffToken) {
+    try {
+      const records = await apiFetchRecords();
+      if (Array.isArray(records) && records.length) {
+        saveStorage(APP_CONFIG.storageKeys.records, records);
+        return records.map(normalizeRecord);
+      }
+    } catch (error) {
+      console.warn("Unable to load records from API, falling back to local cache.", error);
+    }
+  }
+
   const stored = loadStorage(APP_CONFIG.storageKeys.records);
   const records = Array.isArray(stored) && stored.length ? stored : DEFAULT_RECORDS;
   return records.map(normalizeRecord);
@@ -1797,6 +1859,17 @@ function findRecordByToken(token) {
   return state.records.find((record) => record.token === token) || null;
 }
 
+function upsertStateRecord(record) {
+  const normalized = normalizeRecord(record);
+  const index = state.records.findIndex((item) => item.token === normalized.token);
+  if (index >= 0) {
+    state.records.splice(index, 1, normalized);
+  } else {
+    state.records.unshift(normalized);
+  }
+  return normalized;
+}
+
 function findRecordByIdentity(name, idNo, birthday) {
   const normalizedName = String(name || "").trim();
   const normalizedIdNo = normalizeIdNo(idNo);
@@ -1824,6 +1897,17 @@ function isStaffLoggedIn() {
 
 function persistRecords() {
   saveStorage(APP_CONFIG.storageKeys.records, state.records);
+  if (!isApiMode()) return;
+
+  if (state.staffToken) {
+    queueApiPersist(() => apiSaveRecords(state.records));
+    return;
+  }
+
+  const patientRecord = state.currentPatientVerified ? getCurrentPatientRecord() : null;
+  if (patientRecord && state.patientIdentity) {
+    queueApiPersist(() => apiSavePatientRecord(patientRecord, state.patientIdentity));
+  }
 }
 
 function touchRecord(record) {
@@ -2013,6 +2097,89 @@ function writeAuditLog(action, payload) {
     at: new Date().toISOString()
   });
   saveStorage(APP_CONFIG.storageKeys.auditTrail, trail.slice(0, 120));
+}
+
+function isApiMode() {
+  return window.location.protocol !== "file:";
+}
+
+function queueApiPersist(task) {
+  window.clearTimeout(apiPersistTimer);
+  apiPersistTimer = window.setTimeout(async () => {
+    try {
+      await task();
+    } catch (error) {
+      console.warn("Unable to persist to clinic API.", error);
+    }
+  }, 250);
+}
+
+async function apiRequest(path, options = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+    ...(options.headers || {})
+  };
+  if (state.staffToken) {
+    headers.Authorization = `Bearer ${state.staffToken}`;
+  }
+
+  const response = await fetch(path, {
+    ...options,
+    headers
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || `API request failed: ${response.status}`);
+  }
+  return payload;
+}
+
+async function apiStaffLogin(credentials) {
+  return apiRequest("/api/staff/login", {
+    method: "POST",
+    body: JSON.stringify(credentials)
+  });
+}
+
+async function apiStaffLogout() {
+  if (!state.staffToken || !isApiMode()) return;
+  try {
+    await apiRequest("/api/staff/logout", { method: "POST" });
+  } catch (error) {
+    console.warn("Unable to logout from API.", error);
+  }
+}
+
+async function apiFetchRecords() {
+  const payload = await apiRequest("/api/records");
+  return payload.records || [];
+}
+
+async function apiSaveRecords(records) {
+  if (!state.staffToken) return;
+  await apiRequest("/api/records/bulk", {
+    method: "PUT",
+    body: JSON.stringify({ records })
+  });
+}
+
+async function apiPatientVerify(identity) {
+  if (!isApiMode()) {
+    throw new Error("API unavailable in file preview mode.");
+  }
+  const payload = await apiRequest("/api/patient/verify", {
+    method: "POST",
+    body: JSON.stringify(identity)
+  });
+  return payload.record;
+}
+
+async function apiSavePatientRecord(record, identity) {
+  await apiRequest(`/api/patient/records/${encodeURIComponent(record.token)}`, {
+    method: "PUT",
+    body: JSON.stringify({ record, identity })
+  });
 }
 
 function setInfo(target, message, isError = false) {

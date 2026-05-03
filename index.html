@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>涵恩婦產科診所 自費療程紀錄系統</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark brand-photo-mark" aria-hidden="true">
+            <img src="assets/hanen-logo.jpg" alt="" />
+          </div>
+          <div>
+            <p class="eyebrow">Han En Obstetrics and Gynecology Clinic</p>
+            <h1>涵恩婦產科診所</h1>
+            <p class="brand-subtitle">自費療程紀錄系統</p>
+          </div>
+        </div>
+        <nav class="mode-switch" aria-label="系統模式">
+          <button class="mode-chip active" data-screen="reception">櫃台開單</button>
+          <button class="mode-chip" data-screen="patient">患者填寫</button>
+          <button class="mode-chip" data-screen="staff">醫護後台</button>
+        </nav>
+      </header>
+
+      <main>
+        <section class="screen active" id="reception-screen">
+          <div class="grid reception-grid">
+            <aside class="panel">
+              <div class="panel-head">
+                <p class="section-label">Reception Launcher</p>
+                <h2>院內平板開單流程</h2>
+                <p class="muted">
+                  這一頁給櫃台建立當次療程表單。正式上線時，病患只需要接過平板，直接填自己的區塊，不需要登入後台。
+                </p>
+              </div>
+
+              <form id="reception-form">
+                <div class="field-grid two-up">
+                  <label class="field">
+                    <span>姓名</span>
+                    <input id="reception-name" type="text" placeholder="例如：林小姐" required />
+                  </label>
+                  <label class="field">
+                    <span>生日</span>
+                    <input id="reception-birthday" type="date" required />
+                  </label>
+                  <label class="field">
+                    <span>身分證字號</span>
+                    <input id="reception-id-no" type="text" placeholder="例如：A123456789" required />
+                  </label>
+                  <label class="field">
+                    <span>病歷號</span>
+                    <input id="reception-chart" type="text" placeholder="例如：A182736" required />
+                  </label>
+                  <label class="field">
+                    <span>療程項目</span>
+                    <select id="reception-treatment">
+                      <option value="magnetic-chair">磁波椅</option>
+                      <option value="vaginal-laser">陰道雷射</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>付款方式</span>
+                    <select id="reception-payment">
+                      <option value="paid_full">已付清方案</option>
+                      <option value="per_visit">單次付款</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>購買堂數</span>
+                    <input id="reception-session-count" type="number" min="1" max="12" value="8" />
+                  </label>
+                  <label class="field">
+                    <span>主治醫師</span>
+                    <input id="reception-doctor" type="text" placeholder="例如：許醫師" />
+                  </label>
+                  <label class="field">
+                    <span>護理師</span>
+                    <input id="reception-nurse" type="text" placeholder="例如：陳護理師" />
+                  </label>
+                </div>
+
+                <label class="field">
+                  <span>LAN 測試網址</span>
+                  <input id="lan-base-url" type="url" placeholder="http://192.168.50.7:4173" />
+                </label>
+
+                <div class="form-row compact">
+                  <button class="primary-btn" type="submit">建立當次填表</button>
+                  <button class="ghost-btn" type="button" id="load-demo-record-btn">載入示範資料</button>
+                </div>
+              </form>
+
+              <div class="info-box" id="reception-status">
+                建立完成後，櫃台可以直接開啟患者表單，或把同一條 LAN 連結交給測試中的 iPhone 使用。
+              </div>
+            </aside>
+
+            <section class="panel">
+              <div class="panel-head split-head">
+                <div>
+                  <p class="section-label">Clinic LAN</p>
+                  <h2>今日填表佇列</h2>
+                </div>
+                <div class="pill-row">
+                  <span class="pill subtle">病患平板</span>
+                  <span class="pill subtle">院內主機</span>
+                  <span class="pill subtle">醫護後台</span>
+                </div>
+              </div>
+
+              <div class="queue-layout">
+                <div class="record-list reception-list" id="reception-record-list"></div>
+                <div class="record-detail reception-detail" id="reception-record-detail">
+                  <div class="placeholder-state">
+                    <h3>請先選一筆當次療程</h3>
+                    <p>右側會顯示平板直達表單連結、iPhone 測試用網址，還有這次療程的櫃台摘要。</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="screen" id="patient-screen">
+          <div class="single-column">
+            <section class="panel form-panel">
+              <div class="panel-head patient-form-head">
+                <div>
+                  <p class="section-label">Patient Tablet Form</p>
+                  <h2 id="patient-form-title">患者表單尚未啟動</h2>
+                  <p class="muted" id="patient-form-subtitle">
+                    請由櫃台建立當次療程後，再從院內平板或 LAN 測試連結打開這份表單。
+                  </p>
+                </div>
+                <div class="patient-form-toolbar">
+                  <button type="button" class="ghost-btn" id="patient-back-to-reception-btn">回到櫃台</button>
+                </div>
+              </div>
+
+              <div class="patient-active-banner" id="patient-active-banner">
+                <strong id="patient-active-label">尚未載入患者表單</strong>
+                <span id="patient-active-hint">櫃台建立當次療程後，病患就只會看到自己這次需要填寫的區塊。</span>
+              </div>
+
+              <div class="patient-login-card" id="patient-login-card">
+                <div class="panel-head">
+                  <p class="section-label">Patient Check-in</p>
+                  <h3>患者資料確認</h3>
+                  <p class="muted">請輸入姓名、身分證字號與生日，確認這份表單屬於您本人。</p>
+                </div>
+                <div class="field-grid two-up">
+                  <label class="field">
+                    <span>姓名</span>
+                    <input id="patient-login-name" type="text" placeholder="請輸入姓名" />
+                  </label>
+                  <label class="field">
+                    <span>身分證字號</span>
+                    <input id="patient-login-id-no" type="text" placeholder="請輸入身分證字號" />
+                  </label>
+                  <label class="field">
+                    <span>生日</span>
+                    <input id="patient-login-birthday" type="date" />
+                  </label>
+                </div>
+                <div class="form-row compact">
+                  <button type="button" class="primary-btn" id="patient-verify-btn">確認進入表單</button>
+                </div>
+              </div>
+
+              <div id="patient-empty-state" class="placeholder-state large-placeholder">
+                <h3>這台裝置目前沒有指定患者表單</h3>
+                <p>請從櫃台頁面點選「開啟患者表單」，或使用帶有 record 參數的 LAN 連結開啟。</p>
+              </div>
+
+              <form id="patient-form" class="hidden">
+                <div class="meta-cards" id="patient-meta-cards"></div>
+
+                <div class="table-wrap">
+                  <table class="therapy-table">
+                    <thead>
+                      <tr>
+                        <th>次數</th>
+                        <th>日期</th>
+                        <th>單次付款狀態</th>
+                        <th>目前困擾</th>
+                        <th>客人簽名</th>
+                      </tr>
+                    </thead>
+                    <tbody id="session-table-body"></tbody>
+                  </table>
+                </div>
+
+                <div class="summary-bar">
+                  <div>
+                    <span class="summary-label">已填寫堂數</span>
+                    <strong id="completed-count">0 / 0</strong>
+                  </div>
+                  <div>
+                    <span class="summary-label">待補簽名</span>
+                    <strong id="unsigned-count">0</strong>
+                  </div>
+                  <div>
+                    <span class="summary-label">本次療程狀態</span>
+                    <strong id="patient-status-chip">未開單</strong>
+                  </div>
+                </div>
+
+                <div class="actions">
+                  <button type="button" class="secondary-btn" id="save-draft-btn">儲存草稿</button>
+                  <button type="submit" class="primary-btn">送出患者表單</button>
+                </div>
+              </form>
+
+              <div class="info-box" id="patient-login-status">
+                患者端只會寫入自己的問卷與簽名，醫療參數由醫護後台補寫。
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="screen" id="staff-screen">
+          <div class="grid staff-grid">
+            <aside class="panel staff-auth">
+              <div class="panel-head">
+                <p class="section-label">Clinical Portal</p>
+                <h2>醫護登入</h2>
+              </div>
+
+              <div class="staff-auth-fields">
+                <label class="field">
+                  <span>登入角色</span>
+                  <select id="staff-role">
+                    <option value="doctor">醫師</option>
+                    <option value="nurse">護理師</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>帳號</span>
+                  <input id="staff-username" type="text" placeholder="doctor.hsu / nurse.chen" />
+                </label>
+                <label class="field">
+                  <span>密碼</span>
+                  <input id="staff-password" type="password" placeholder="示範密碼：demo1234" />
+                </label>
+              </div>
+
+              <div class="form-row compact staff-auth-actions">
+                <button class="primary-btn" id="staff-login-btn" type="button">登入後台</button>
+                <button class="ghost-btn" id="demo-staff-btn" type="button">載入示範帳號</button>
+                <button class="ghost-btn" id="staff-logout-btn" type="button">登出</button>
+              </div>
+
+              <div class="info-box" id="staff-login-status">
+                醫師與護理師共用同一個 LAN 站點，但只有登入後才看得到後台資料與可編輯欄位。
+              </div>
+
+              <div class="mini-note staff-demo-note">
+                <strong>示範帳號</strong>
+                <p>醫師：doctor.hsu / demo1234</p>
+                <p>護理師：nurse.chen / demo1234</p>
+              </div>
+
+              <div class="mini-note staff-session-summary hidden" id="staff-session-summary"></div>
+              <div class="mini-note staff-work-reminder hidden" id="staff-work-reminder"></div>
+            </aside>
+
+            <section class="panel staff-dashboard">
+              <div class="panel-head dashboard-head">
+                <div>
+                  <p class="section-label">LAN Record Center</p>
+                  <h2>醫護查詢後台</h2>
+                </div>
+                <div class="toolbar">
+                  <input id="staff-search" type="search" placeholder="搜尋姓名、病歷號、當次代碼" />
+                  <select id="staff-filter-status">
+                    <option value="all">全部狀態</option>
+                    <option value="queued">待患者填寫</option>
+                    <option value="active">填寫中</option>
+                    <option value="pending_signature">待補簽名</option>
+                    <option value="completed">已完成</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="dashboard-stats">
+                <div class="stat-card">
+                  <span>今日建立表單</span>
+                  <strong id="stat-today">0</strong>
+                </div>
+                <div class="stat-card">
+                  <span>待補簽名</span>
+                  <strong id="stat-pending">0</strong>
+                </div>
+                <div class="stat-card">
+                  <span>單次收款</span>
+                  <strong id="stat-revenue">NT$0</strong>
+                </div>
+              </div>
+
+              <div class="staff-section-divider" aria-hidden="true"></div>
+
+              <div class="record-list-tools">
+                <button class="ghost-btn" id="toggle-record-list-btn" type="button">收合病患清單</button>
+              </div>
+
+              <div class="staff-content">
+                <div class="record-list" id="record-list"></div>
+                <div class="staff-main">
+                  <div class="record-detail" id="record-detail">
+                    <div class="placeholder-state">
+                      <h3>請先選擇一筆療程</h3>
+                      <p>選到資料後，右側會切出醫護端編輯區、患者治療紀錄，以及療程成效總覽。</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="signature-modal hidden" id="signature-modal" aria-hidden="true">
+      <div class="signature-dialog">
+        <div class="signature-head">
+          <div>
+            <p class="section-label">Signature Capture</p>
+            <h3 id="signature-title">患者簽名</h3>
+          </div>
+          <button class="icon-btn" id="close-signature-btn" aria-label="關閉簽名板" type="button">×</button>
+        </div>
+        <p class="muted">請患者直接在此手寫簽名。病患若修改本堂內容，系統會自動清除既有簽名，避免簽名與內容不一致。</p>
+        <canvas id="signature-canvas" width="760" height="280"></canvas>
+        <div class="form-row compact end">
+          <button class="ghost-btn" id="clear-signature-btn" type="button">清除簽名</button>
+          <button class="primary-btn" id="save-signature-btn" type="button">儲存簽名</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="vendor-qrcode.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
